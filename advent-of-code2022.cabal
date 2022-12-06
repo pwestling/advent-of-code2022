@@ -36,6 +36,7 @@ library
       Advent3
       Advent4
       Advent5
+      Advent6
       Util
   other-modules:
       Paths_advent_of_code2022

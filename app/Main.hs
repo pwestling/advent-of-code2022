@@ -1,7 +1,7 @@
 module Main(Main.main) where
 
-import Advent5
+import Advent6
 
 
 main :: IO ()
-main = Advent5.main
+main = Advent6.main
