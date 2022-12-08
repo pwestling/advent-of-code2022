@@ -26,6 +26,8 @@ dependencies:
 - split
 - containers
 - ilist
+- prettyprinter
+- safe
 
 data-files:
   - resources/*

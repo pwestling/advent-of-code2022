@@ -24,6 +24,9 @@ data-files:
     resources/nums
     resources/rps-game
     resources/stacked-crates
+    resources/terminal-session
+    resources/terminal-session-test
+    resources/tree-grid
 
 source-repository head
   type: git
@@ -37,6 +40,8 @@ library
       Advent4
       Advent5
       Advent6
+      Advent7
+      Advent8
       Util
   other-modules:
       Paths_advent_of_code2022
@@ -49,6 +54,8 @@ library
     , filepath
     , ilist
     , parsec
+    , prettyprinter
+    , safe
     , split
   default-language: Haskell2010
 
@@ -66,6 +73,8 @@ executable advent-of-code2022-exe
     , filepath
     , ilist
     , parsec
+    , prettyprinter
+    , safe
     , split
   default-language: Haskell2010
 
@@ -84,5 +93,7 @@ test-suite advent-of-code2022-test
     , filepath
     , ilist
     , parsec
+    , prettyprinter
+    , safe
     , split
   default-language: Haskell2010
