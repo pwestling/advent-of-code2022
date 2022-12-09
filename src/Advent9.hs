@@ -58,7 +58,7 @@ parseInstruction = do
   return $ Instruction d (read distance)
 
 
-data RopeState = RopeState Point Point deriving (Show)
+data RopeState = RopeState [Point] deriving (Show)
 
 dirFn :: Direction -> Point -> Point
 dirFn U = up
@@ -85,16 +85,21 @@ breakdown :: Instruction -> [Instruction]
 breakdown (Instruction dir 1) = [Instruction dir 1]
 breakdown (Instruction dir n) = Instruction dir 1 : breakdown (Instruction dir (n-1))
 
+wagTails :: Point -> [Point] -> [Point]
+wagTails h [] = [h]
+wagTails h (t:ts) = h : wagTails (tailFollowHead h t) ts
+
 move :: RopeState -> Instruction -> RopeState
 move s (Instruction direction 0) = s
-move (RopeState head tail) (Instruction direction distance) = result where
-  newHead = dirFn direction head
-  newTail = tailFollowHead newHead tail
-  result = move (RopeState newHead newTail) (Instruction direction (distance - 1))
+move (RopeState (k : ks)) (Instruction direction distance) = result where
+  newHead = dirFn direction k
+  rope = wagTails newHead ks
+  result = move (RopeState rope) (Instruction direction (distance - 1))
 
 
 getTail :: RopeState -> Point
-getTail (RopeState _ tail) = tail
+getTail (RopeState [tail]) = tail
+getTail (RopeState (k:ks)) = getTail (RopeState ks)
 
 main :: IO ()
 main = do
@@ -105,6 +110,6 @@ main = do
         Left err -> error $ show err
         Right instructions -> concatMap breakdown instructions
   print instructions
-  let allStates = scanl move (RopeState (Point 0 0) (Point 0 0)) instructions
+  let allStates = scanl move (RopeState (replicate 10 (Point 0 0))) instructions
   mapM_ print allStates
   print $ length $ nub $ fmap getTail allStates
