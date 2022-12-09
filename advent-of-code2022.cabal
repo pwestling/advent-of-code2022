@@ -22,6 +22,7 @@ data-files:
     resources/cleaning-sections
     resources/compartments
     resources/nums
+    resources/rope-instructions
     resources/rps-game
     resources/stacked-crates
     resources/terminal-session
@@ -42,6 +43,7 @@ library
       Advent6
       Advent7
       Advent8
+      Advent9
       Util
   other-modules:
       Paths_advent_of_code2022
