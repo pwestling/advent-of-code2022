@@ -21,6 +21,8 @@ extra-source-files:
 data-files:
     resources/cleaning-sections
     resources/compartments
+    resources/cycle-cmds
+    resources/cycle-cmds-example
     resources/nums
     resources/rope-instructions
     resources/rps-game
@@ -36,6 +38,7 @@ source-repository head
 library
   exposed-modules:
       Advent1
+      Advent10
       Advent2
       Advent3
       Advent4
