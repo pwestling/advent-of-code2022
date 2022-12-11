@@ -23,6 +23,8 @@ data-files:
     resources/compartments
     resources/cycle-cmds
     resources/cycle-cmds-example
+    resources/monkey-items
+    resources/monkey-items-example
     resources/nums
     resources/rope-instructions
     resources/rps-game
@@ -39,6 +41,7 @@ library
   exposed-modules:
       Advent1
       Advent10
+      Advent11
       Advent2
       Advent3
       Advent4
