@@ -63,20 +63,20 @@ parseMonkey = do
 parseMonkeys :: Parser [Monkey]
 parseMonkeys = parseMonkey `sepBy` spaces
 
-operate :: Op -> Item -> Item
-operate (Mult Old) (Item i) = Item ((i * i) `div` 3)
-operate (Mult (Const i)) (Item j) = Item ((j * i)`div`3)
-operate (Add Old) (Item i) = Item ((i + i)`div`3)
-operate (Add (Const i)) (Item j) = Item ((j + i)`div`3)
+operate :: Int -> Op -> Item -> Item
+operate manage (Mult Old) (Item i) = Item ((i * i) `mod` manage)
+operate manage (Mult (Const i)) (Item j) = Item ((j * i) `mod` manage)
+operate manage (Add Old) (Item i) = Item ((i + i) `mod` manage)
+operate manage (Add (Const i)) (Item j) = Item ((j + i) `mod` manage)
 
 testItem :: Test -> Item -> Bool
 testItem (Divisible i) (Item j) = j `mod` i == 0
 
 
-runTurn :: [Monkey] -> Int -> [Monkey]
-runTurn monkeys monkeyId = result where
+runTurn :: Int -> [Monkey] -> Int -> [Monkey]
+runTurn manage monkeys monkeyId = result where
   monkey = monkeys !! monkeyId
-  newItems = operate (operation monkey) <$> items monkey
+  newItems = operate manage (operation monkey) <$> items monkey
   Targets{..} = target monkey
   trueMonkey = monkeys !! ifTrue
   falseMonkey = monkeys !! ifFalse
@@ -87,15 +87,22 @@ runTurn monkeys monkeyId = result where
   newCurrentMonkey = monkey {items = [], inspections = inspections monkey + length newItems}
   result = setAt monkeyId newCurrentMonkey $ setAt ifTrue newTrueMonkey $ setAt ifFalse newFalseMonkey monkeys
 
-runRound :: [Monkey] -> [Monkey]
-runRound monkeys = foldl runTurn monkeys [0..length monkeys - 1]
+runRound :: Int -> [Monkey] -> [Monkey]
+runRound manage monkeys = foldl (runTurn manage) monkeys [0..length monkeys - 1]
 
-runNRounds :: Int -> [Monkey] -> [Monkey]
-runNRounds 0 monkeys = monkeys
-runNRounds n monkeys = runNRounds (n - 1) (runRound monkeys)
+runNRounds :: Int -> Int -> [Monkey] -> [Monkey]
+runNRounds manage 0 monkeys = monkeys
+runNRounds manage n monkeys = (runNRounds manage) (n - 1) (runRound manage monkeys)
 
 monkeyBusiness :: [Monkey] -> Int
 monkeyBusiness monkeys = foldl (*) 1 $ take 2 $ reverse $ sort $ fmap inspections monkeys
+
+fromDivisible :: Test -> Int
+fromDivisible (Divisible i) = i
+
+managementNumber :: [Monkey] -> Int
+managementNumber monkeys = foldl (*) 1 $ fmap (fromDivisible . test) monkeys
+
 
 main :: IO ()
 main = do
@@ -104,7 +111,9 @@ main = do
   let monkeys = case entries of
           Left err -> error $ show err
           Right monkeys -> monkeys
-  mapM_ print $ runRound monkeys
-  print $ monkeyBusiness $ runNRounds 20 monkeys
+  let m = managementNumber monkeys
+  print m
+  mapM_ print $ runNRounds m 10000 monkeys
+  print $ monkeyBusiness $ runNRounds m 10000 monkeys
 
 
