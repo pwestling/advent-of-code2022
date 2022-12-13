@@ -28,6 +28,7 @@ dependencies:
 - ilist
 - prettyprinter
 - safe
+- mtl
 
 data-files:
   - resources/*

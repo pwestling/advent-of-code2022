@@ -23,11 +23,15 @@ data-files:
     resources/compartments
     resources/cycle-cmds
     resources/cycle-cmds-example
+    resources/height-map
+    resources/height-map-example
     resources/monkey-items
     resources/monkey-items-example
     resources/nums
     resources/rope-instructions
     resources/rps-game
+    resources/signal-order
+    resources/signal-order-example
     resources/stacked-crates
     resources/terminal-session
     resources/terminal-session-test
@@ -42,6 +46,8 @@ library
       Advent1
       Advent10
       Advent11
+      Advent12
+      Advent13
       Advent2
       Advent3
       Advent4
@@ -50,6 +56,7 @@ library
       Advent7
       Advent8
       Advent9
+      Graph
       Util
   other-modules:
       Paths_advent_of_code2022
@@ -61,6 +68,7 @@ library
     , containers
     , filepath
     , ilist
+    , mtl
     , parsec
     , prettyprinter
     , safe
@@ -80,6 +88,7 @@ executable advent-of-code2022-exe
     , containers
     , filepath
     , ilist
+    , mtl
     , parsec
     , prettyprinter
     , safe
@@ -100,6 +109,7 @@ test-suite advent-of-code2022-test
     , containers
     , filepath
     , ilist
+    , mtl
     , parsec
     , prettyprinter
     , safe

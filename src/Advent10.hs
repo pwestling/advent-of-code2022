@@ -49,8 +49,6 @@ strength Machine{..} = register * cycle
 isTargetCycle :: Machine -> Bool
 isTargetCycle Machine{..} = cycle `elem` [20,60,100,140,180,220]
 
-data Point = Point Int Int deriving (Show, Eq)
-
 screenXY :: Machine -> Point
 screenXY (Machine _ cycle) = Point (cycle `mod` 40) (cycle `div` 40)
 

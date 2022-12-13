@@ -13,8 +13,6 @@ import Data.Char
 import Data.Either
 import Debug.Trace
 
-data Point = Point Int Int deriving (Show, Eq)
-
 up :: Point -> Point
 up (Point x y) = Point x (y + 1)
 
