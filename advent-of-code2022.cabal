@@ -23,6 +23,8 @@ data-files:
     resources/compartments
     resources/cycle-cmds
     resources/cycle-cmds-example
+    resources/falling-sand
+    resources/falling-sand-example
     resources/height-map
     resources/height-map-example
     resources/monkey-items
@@ -48,6 +50,7 @@ library
       Advent11
       Advent12
       Advent13
+      Advent14
       Advent2
       Advent3
       Advent4
