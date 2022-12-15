@@ -16,7 +16,7 @@ import qualified Data.Map as Map
 import qualified Data.List.Split as Split
 
 data Fill = Rock | FallingSand | Sand | Air deriving (Show, Eq)
-data Grid = Grid (Map.Map Point Fill) (Maybe Point) deriving (Show, Eq)
+data Grid = Grid (Map.Map Point Fill) (Maybe Point) deriving (Show)
 
 getAt :: Point -> Grid -> Fill
 getAt p (Grid grid fs) =  fromMaybe Air (Map.lookup p grid)
@@ -50,24 +50,22 @@ drawSectionsInGrid grid points = foldl' (\g (p1, p2) -> drawLineInGrid g p1 p2) 
 
 
 
-drawGrid :: Int -> Int -> Grid -> String
-drawGrid width height (Grid grid _) = unlines $ map (map (\p -> case getAt p (Grid grid Nothing ) of
+drawGrid :: Int -> Int -> Int -> Grid -> String
+drawGrid lowY width height (Grid grid _) = unlines $ map (map (\p@(Point px py) -> case getAt p (Grid grid Nothing ) of
   Rock -> '#'
   Sand -> 'O'
   FallingSand -> '$'
-  Air -> '.')) $ Split.chunksOf (2*width+1) [Point x y | y <- [0..height], x <- [(500-width)..(500+width)]]
+  Air -> if py == lowY + 2 then '#' else '.')) $ Split.chunksOf (2*width+1) [Point x y | y <- [0..height], x <- [(500-width)..(500+width)]]
 
 
 stabilize :: Grid -> Grid
-stabilize g@(Grid _ (Just fs@(Point _ fsy))) = Grid g' Nothing where
-  abyss = lowestY g + 1
-  (Grid g' _) = if fsy >= abyss then setGridAt fs Air g else setGridAt fs Sand g
+stabilize g@(Grid m (Just fs@(Point _ fsy))) = Grid g' Nothing where
+  (Grid g' _) = setGridAt fs Sand g
 
 
-evolveFallingSand :: Grid -> Grid
-evolveFallingSand g@(Grid grid Nothing) = g where
-evolveFallingSand g@(Grid grid (Just fallingSand@(Point _ fsy))) = result where
-  abyss = lowestY g + 1
+evolveFallingSand :: Int -> Grid -> Grid
+evolveFallingSand caveFloor g@(Grid grid Nothing) = g where
+evolveFallingSand caveFloor g@(Grid grid (Just fallingSand@(Point _ fsy))) = result where
   belowFs = goUp fallingSand
   belowLeftFs = goUp $ goLeft fallingSand
   belowRightFs = goUp $ goRight fallingSand
@@ -76,7 +74,7 @@ evolveFallingSand g@(Grid grid (Just fallingSand@(Point _ fsy))) = result where
     (_, Air, _) -> Just belowLeftFs
     (_, _, Air) -> Just belowRightFs
     _ -> Nothing
-  result = if fsy >= abyss then stabilize g else
+  result = if fsy == caveFloor then stabilize g else
     case pointToMoveTo of
       Just p -> setGridAt p FallingSand $ setGridAt fallingSand Air g
       Nothing -> stabilize g
@@ -87,14 +85,37 @@ lowestY (Grid grid _) = maximum $ map (\(Point _ y) -> y) $ filter (\p -> Map.lo
 converge :: Eq a => (a -> a) -> a -> a
 converge = until =<< ((==) =<<)
 
-runOneSand :: Grid -> Grid
-runOneSand g = result where
+runOneSand :: Int -> Grid -> Grid
+runOneSand caveFloor g = result where
   start = setGridAt (Point 500 0) FallingSand g
-  result = converge evolveFallingSand start
+  result = until (\(Grid _ fs) -> isNothing fs) (evolveFallingSand caveFloor) start
 
 
 countSand :: Grid -> Int
 countSand (Grid grid _) = length $ filter (== Sand) $ Map.elems grid
+
+pointsInCone :: Grid -> [Point]
+pointsInCone g = do
+  let floorY = lowestY g + 1
+  y <- [0..floorY]
+  x <- [(500 - y)..(500 + y)]
+  let p = Point x y
+  return p
+
+coneEvolve :: Grid -> Point -> Grid
+coneEvolve g p = result where
+  isSand p = getAt p g == Sand
+  isAir p = getAt p g == Air
+  shouldBeSand = isAir p &&
+                 (isSand (goDown p) ||
+                 isSand (goDown $ goLeft p) ||
+                 isSand (goDown $ goRight p))
+  result = if shouldBeSand then setGridAt p Sand g else g
+
+runCone :: Grid -> Grid
+runCone g = foldl' coneEvolve g' (pointsInCone g) where
+  g' = setGridAt (Point 500 0) Sand g
+
 
 main :: IO ()
 main = do
@@ -107,8 +128,14 @@ main = do
   let grid = foldl' drawSectionsInGrid (Grid Map.empty Nothing) stuff
   print $ grid
 --  putStr $ drawGrid 7 12 grid
-  let result = converge runOneSand grid
-  putStr $ drawGrid 7 12 result
+  let caveFloor = lowestY grid
+  let result = runCone grid
+  let graphic =  drawGrid caveFloor 160 156 result
+  writeFile "graphic.txt" graphic
   print $ countSand result
+  let slowResult = until (\g -> getAt (Point 500 0) g == Sand) (runOneSand (caveFloor+1)) grid
+  let graphic2 =  drawGrid caveFloor 160 156 slowResult
+  writeFile "graphic2.txt" graphic2
+  print $ countSand slowResult
 
 
