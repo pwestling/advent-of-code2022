@@ -23,6 +23,8 @@ data-files:
     resources/compartments
     resources/cycle-cmds
     resources/cycle-cmds-example
+    resources/elephant-tetris
+    resources/elephant-tetris-example
     resources/falling-sand
     resources/falling-sand-example
     resources/height-map
@@ -59,6 +61,7 @@ library
       Advent14
       Advent15
       Advent16
+      Advent17
       Advent2
       Advent3
       Advent4
