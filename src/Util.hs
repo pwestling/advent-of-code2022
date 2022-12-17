@@ -8,6 +8,7 @@ import Text.Parsec.Prim
 import Text.Parsec.String
 import Text.ParserCombinators.Parsec.Char
 import Control.Monad
+import Data.Maybe
 
 resource :: String -> IO String
 resource name = do
@@ -18,7 +19,22 @@ resource name = do
 end :: Parser ()
 end = void newline <|> eof
 
+parseNumber :: Parser Int
+parseNumber = read <$> ((maybeToList <$> optionMaybe (char '-')) <> many1 digit)
+
 data Point = Point Int Int deriving (Show, Eq, Ord)
+
+getX :: Point -> Int
+getX (Point x _) = x
+
+getY :: Point -> Int
+getY (Point _ y) = y
+
+instance Semigroup Point where
+  (Point x1 y1) <> (Point x2 y2) = Point (x1 + x2) (y1 + y2)
+
+instance Monoid Point where
+    mempty = Point 0 0
 
 goUp :: Point -> Point
 goUp (Point x y) = Point x (y + 1)
