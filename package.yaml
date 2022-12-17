@@ -31,6 +31,8 @@ dependencies:
 - mtl
 - extra
 - random
+- parallel
+- deepseq
 
 data-files:
   - resources/*

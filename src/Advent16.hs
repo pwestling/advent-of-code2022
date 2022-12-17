@@ -1,6 +1,7 @@
 {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
 
 module Advent16(main) where
@@ -25,13 +26,21 @@ import System.Random
 import qualified Control.Monad.State as St
 import Control.Monad
 import qualified Data.Set as Set
+import Control.Parallel.Strategies
+import System.CPUTime
+import Control.Monad.IO.Class (MonadIO(liftIO))
+import GHC.Generics
+import Control.DeepSeq
 
-newtype ValveLabel = ValveLabel String deriving (Show, Eq, Ord)
+
+newtype ValveLabel = ValveLabel String deriving (Show, Eq, Ord,Generic, NFData)
 
 data Valve = Valve {
    name :: ValveLabel,
    rate :: Int
-} deriving (Show)
+} deriving (Show, Generic)
+
+instance NFData Valve
 
 instance Eq Valve where
   (==) a b = a.name == b.name
@@ -39,9 +48,9 @@ instance Eq Valve where
 instance Ord Valve where
   compare a b = compare (a.name) (b.name)
 
-data VolcanoMap = VolcanoMap (Map.Map Valve [Valve]) deriving (Show, Eq, Ord)
+data VolcanoMap = VolcanoMap (Map.Map Valve [Valve]) deriving (Show, Eq, Ord, Generic, NFData)
 
-data ValveStates = ValveStates (Map.Map Valve Int) [Bool] deriving (Show)
+data ValveStates = ValveStates (Map.Map Valve Int) [Bool] deriving (Show, Generic, NFData)
 
 openV :: Valve -> ValveStates -> ValveStates
 openV v (ValveStates states open) = (ValveStates states result) where
@@ -71,7 +80,9 @@ data VolcanoState = VolcanoState {
    time :: Int,
    op :: Operation,
    flowRate :: Int
-}
+} deriving (Generic)
+
+instance NFData VolcanoState
 
 instance Show VolcanoState where
   show (VolcanoState _ _ currentValve releasedPressure time op flowRate) = "VolcanoState { currentValve = " ++ show currentValve ++ ", releasedPressure = " ++ show releasedPressure ++ ", time = " ++ show time ++ ", flowRate = " ++ show flowRate ++ "}"
@@ -200,7 +211,7 @@ secondToLast :: [a] -> a
 secondToLast = last . init
 
 
-data Operation = Open Valve | Goto Valve deriving (Show, Eq, Ord)
+data Operation = Open Valve | Goto Valve deriving (Show, Eq, Ord,Generic, NFData)
 
 iterateVolcanoStateOnOperation :: VolcanoState -> Operation -> VolcanoState
 iterateVolcanoStateOnOperation state (Open v) = result where
@@ -313,7 +324,7 @@ reduceGraphBFS start g = distCosts where
   distCosts = Map.fromList $ fmap (\(s,ps) -> (s, filter (\(p,c) -> p /= s) ps)) $ fmap getCosts targetNodes
 
 rankDest :: Int -> (Valve,Int) -> Int
-rankDest time (valve, cost) = valve.rate * (time - (cost * 3))
+rankDest time (valve, cost) = (valve.rate * (time - (cost + 1)*2))
 
 possiblePaths :: Map.Map Valve [(Valve, Int)] -> Int -> Valve -> Set.Set Valve -> [(Valve,Int)] -> [[(Valve,Int)]]
 possiblePaths g time source pset path = result where
@@ -337,6 +348,61 @@ evalPathStep state p = next' where
   next = openValve valve $ runNTimes (cost+1) incrementPressure state
   next' = next {currentValve = valve} :: VolcanoState
 
+
+rankedEvaledPaths :: Map.Map Valve [(Valve, Int)] -> Int -> VolcanoState -> Valve -> [Valve] -> [([(Valve,Int)], VolcanoState)]
+rankedEvaledPaths g time volcanoState start offlimitNodes = parallelNodeEval $ fmap reverse allPaths  where
+  nodeEval = (\p -> (p, evalPath time volcanoState p))
+  parallelNodeEval = fmap nodeEval
+  ns = Set.fromList offlimitNodes
+  allPaths = possiblePaths g time start ns []
+
+pressureSum :: (([(Valve,Int)], VolcanoState),([(Valve,Int)], VolcanoState)) -> Int
+pressureSum ((p1, s1),(p2, s2)) = s1.releasedPressure + s2.releasedPressure
+
+
+boolSequences' :: Int -> [[Bool]]
+boolSequences' 0 = [[]]
+boolSequences' n = fmap (True:) (boolSequences' (n-1)) ++ fmap (False:) (boolSequences' (n-1))
+
+boolSequences :: Int -> Int -> [[Bool]]
+boolSequences maxDiff n = filter (\b -> partSizeDiff b <= maxDiff) $ sortOn partSizeDiff $ boolSequences' n
+
+partSizeDiff :: [Bool] -> Int
+partSizeDiff bs = result where
+  (t,f) = partition id bs
+  result = abs $ length t - length f
+
+
+doPartition :: [Bool] -> [a] -> ([a],[a])
+doPartition bools vals = result where
+  z = zip bools vals
+  parted = partition fst z
+  result = (fmap snd $ fst parted, fmap snd $ snd parted)
+
+
+allPossiblePartitions :: Int -> [Valve] -> [([Valve],[Valve])]
+allPossiblePartitions maxDiff a = result where
+  n = length a
+  rankedAs = sortOn (\v -> v.rate) a
+  bools = boolSequences maxDiff n
+  partitionFunctions = fmap doPartition bools
+  result = fmap (\f -> f a) partitionFunctions
+
+rp :: ([(Valve,Int)], VolcanoState) -> Int
+rp (p, s) = s.releasedPressure
+
+pairedResults :: Int -> Map.Map Valve [(Valve, Int)] -> [([Valve],[Valve])] -> VolcanoState -> Valve -> [(([(Valve,Int)], VolcanoState), ([(Valve,Int)], VolcanoState))]
+pairedResults sample g nodePartitions volcanoState start = do
+  (humanSet, eleSet) <- nodePartitions
+  let getBest k = head $ reverse $ sortOn rp $ take sample k
+  let humanPaths = rankedEvaledPaths g 26 volcanoState start (start:humanSet) :: [([(Valve,Int)], VolcanoState)]
+  let elePaths = rankedEvaledPaths g 26 volcanoState start (start:eleSet) :: [([(Valve,Int)], VolcanoState)]
+  let humanPath = getBest $ humanPaths
+  let elePath = getBest $ elePaths
+  return (humanPath, elePath)
+
+tv :: String -> Valve
+tv s = Valve {name = ValveLabel s, rate = 0}
 
 main :: IO ()
 main = do
@@ -367,21 +433,44 @@ main = do
 --  print $ length $ fst result
 
   print "Starting..."
+  t1 <- liftIO getCPUTime
   let g = (reduceGraphBFS start $ asMap neighbors)
-  let pp = fmap reverse $ possiblePaths g 30 start (Set.singleton start) []
-  let bestpp = take 1000000 pp
-  let ranked = fmap (\p -> (p, evalPath 30 volcanoState p)) bestpp
-  let best = head $ reverse $ sortOn ((.releasedPressure) . snd) ranked
 
 
-  mapM_ print $ scanl evalPathStep volcanoState (fst best)
+  let nodePartitions = allPossiblePartitions 3 $ Map.keys g
+  print $ length nodePartitions
+  let knownBestPartition = (
+                            [tv "DA", tv "EA", tv "FA", tv "GA", tv "HA", tv "IA", tv "JA", tv "CA"],
+                            [tv "KA", tv "LA", tv "MA", tv "NA", tv "OA", tv "PA"]
+                           )
 
-  mapM_ print $ fst best
-  print $ (snd best).releasedPressure
-  print $ (snd best).time
-  
-  let openValves = filter (\v -> (snd v).open) $ Map.toList $ (snd best).valveState
-  let epp = fmap reverse $ possiblePaths g 30 start (Set.singleton start) []
+--  let epp = fmap (\(p,s) -> ((p,s), head $ reverse $ sortOn ((.releasedPressure) . snd) (take 1000 (rankedEvaledPaths g 26 volcanoState start (start: (fmap fst p)))))) pp
+
+  let pr = pairedResults 100 g nodePartitions volcanoState start
+
+
+  let best = head $ reverse $ sortOn pressureSum pr
+
+  let humanPath = fst (fst best)
+  let humanState = snd (fst best)
+
+  let elePath = fst (snd best)
+  let eleState = snd (snd best)
+--  mapM_ print $ scanl evalPathStep volcanoState humanPath
+
+  mapM_ print $ humanPath
+  print $ humanState.releasedPressure
+  print $ humanState.time
+
+--  mapM_ print $ scanl evalPathStep volcanoState elePath
+
+  mapM_ print $ elePath
+  print $ eleState.releasedPressure
+  print $ eleState.time
+
+  print $ eleState.releasedPressure + humanState.releasedPressure
+  t2 <- liftIO getCPUTime
+  print $ (fromIntegral (t2 - t1)) / (10 ^ 12)
 
 
 --  let knownBestPath =
@@ -412,4 +501,6 @@ main = do
  -- 1768 was wrong
 
  -- 2461 was wrong
+ -- 2122 was too low
+ -- 2280 was too low
 

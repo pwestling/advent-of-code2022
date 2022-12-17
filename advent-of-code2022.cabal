@@ -77,10 +77,12 @@ library
   build-depends:
       base >=4.7 && <5
     , containers
+    , deepseq
     , extra
     , filepath
     , ilist
     , mtl
+    , parallel
     , parsec
     , prettyprinter
     , random
@@ -99,10 +101,12 @@ executable advent-of-code2022-exe
       advent-of-code2022
     , base >=4.7 && <5
     , containers
+    , deepseq
     , extra
     , filepath
     , ilist
     , mtl
+    , parallel
     , parsec
     , prettyprinter
     , random
@@ -122,10 +126,12 @@ test-suite advent-of-code2022-test
       advent-of-code2022
     , base >=4.7 && <5
     , containers
+    , deepseq
     , extra
     , filepath
     , ilist
     , mtl
+    , parallel
     , parsec
     , prettyprinter
     , random
