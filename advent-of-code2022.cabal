@@ -79,6 +79,7 @@ library
       Advent7
       Advent8
       Advent9
+      BTreeList
       Graph
       Memo
       Util

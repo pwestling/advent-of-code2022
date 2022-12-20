@@ -26,6 +26,7 @@ import qualified Data.Set as Set
 import Graph
 import Data.Function
 import Memo
+import BTreeList
 
 data ListZipper a = ListZipper {
     left :: [a],
