@@ -27,8 +27,14 @@ data-files:
     resources/elephant-tetris-example
     resources/falling-sand
     resources/falling-sand-example
+    resources/geode-bot
+    resources/geode-bot-example
     resources/height-map
     resources/height-map-example
+    resources/lava-drop
+    resources/lava-drop-example
+    resources/mix-enc
+    resources/mix-enc-example
     resources/monkey-items
     resources/monkey-items-example
     resources/nums
@@ -62,7 +68,10 @@ library
       Advent15
       Advent16
       Advent17
+      Advent18
+      Advent19
       Advent2
+      Advent20
       Advent3
       Advent4
       Advent5
@@ -71,6 +80,7 @@ library
       Advent8
       Advent9
       Graph
+      Memo
       Util
   other-modules:
       Paths_advent_of_code2022
@@ -78,11 +88,13 @@ library
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
-      base >=4.7 && <5
+      MemoTrie
+    , base >=4.7 && <5
     , containers
     , deepseq
     , extra
     , filepath
+    , hashable
     , ilist
     , mtl
     , parallel
@@ -91,6 +103,8 @@ library
     , random
     , safe
     , split
+    , text
+    , unordered-containers
   default-language: Haskell2010
 
 executable advent-of-code2022-exe
@@ -101,12 +115,14 @@ executable advent-of-code2022-exe
       app
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      advent-of-code2022
+      MemoTrie
+    , advent-of-code2022
     , base >=4.7 && <5
     , containers
     , deepseq
     , extra
     , filepath
+    , hashable
     , ilist
     , mtl
     , parallel
@@ -115,6 +131,8 @@ executable advent-of-code2022-exe
     , random
     , safe
     , split
+    , text
+    , unordered-containers
   default-language: Haskell2010
 
 test-suite advent-of-code2022-test
@@ -126,12 +144,14 @@ test-suite advent-of-code2022-test
       test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      advent-of-code2022
+      MemoTrie
+    , advent-of-code2022
     , base >=4.7 && <5
     , containers
     , deepseq
     , extra
     , filepath
+    , hashable
     , ilist
     , mtl
     , parallel
@@ -140,4 +160,6 @@ test-suite advent-of-code2022-test
     , random
     , safe
     , split
+    , text
+    , unordered-containers
   default-language: Haskell2010

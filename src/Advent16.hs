@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE ApplicativeDo #-}
 
 
 module Advent16(main) where
@@ -31,7 +32,9 @@ import System.CPUTime
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import GHC.Generics
 import Control.DeepSeq
-
+import Data.Hashable
+import qualified Data.HashMap.Strict as HMap
+import Memo
 
 newtype ValveLabel = ValveLabel String deriving (Show, Eq, Ord,Generic, NFData)
 
@@ -76,6 +79,7 @@ data VolcanoState = VolcanoState {
    map :: VolcanoMap,
    valveStates :: ValveStates,
    currentValve :: Valve,
+   eleValve :: Valve,
    releasedPressure :: Int,
    time :: Int,
    op :: Operation,
@@ -85,23 +89,33 @@ data VolcanoState = VolcanoState {
 instance NFData VolcanoState
 
 instance Show VolcanoState where
-  show (VolcanoState _ _ currentValve releasedPressure time op flowRate) = "VolcanoState { currentValve = " ++ show currentValve ++ ", releasedPressure = " ++ show releasedPressure ++ ", time = " ++ show time ++ ", flowRate = " ++ show flowRate ++ "}"
+  show (VolcanoState _ _ currentValve _ releasedPressure time op flowRate) = "VolcanoState { currentValve = " ++ show currentValve ++ ", releasedPressure = " ++ show releasedPressure ++ ", time = " ++ show time ++ ", flowRate = " ++ show flowRate ++ "}"
 
 data VolcanoStateCacheKey = VolcanoStateCacheKey {
   vstate :: [Bool],
---  time :: Int,
-  currentValve :: Valve
+  time :: Int,
+  currentValve :: Valve,
+  eleValve :: Valve
 } deriving (Show, Eq, Ord)
 
 toCacheKey :: VolcanoState -> VolcanoStateCacheKey
-toCacheKey s = VolcanoStateCacheKey vstate s.currentValve where
+toCacheKey s = VolcanoStateCacheKey vstate (s.time) s.currentValve s.eleValve where
   (ValveStates _ vstate) = s.valveStates
 
+instance Hashable VolcanoStateCacheKey where
+  hashWithSalt salt (VolcanoStateCacheKey vstate time currentValve eleValve) = hashWithSalt salt (vstate, time, currentValve, eleValve)
+
+instance Hashable VolcanoState where
+  hashWithSalt salt s = hashWithSalt salt (toCacheKey s)
+
+instance Hashable Valve where
+  hashWithSalt salt (Valve (ValveLabel s) _) = hashWithSalt salt s
+
 instance Eq VolcanoState where
-  (==) a b = a.currentValve == b.currentValve && a.time == b.time && a.valveStates == b.valveStates
+  (==) a b = a.releasedPressure == b.releasedPressure
 
 instance Ord VolcanoState where
-  compare a b = compare ( a.currentValve, a.time, a.valveStates) (b.currentValve, b.time, b.valveStates)
+  compare a b = compare ( a.releasedPressure) (b.releasedPressure)
 
 --instance Ord VolcanoState where
 --  compare a b = compare a.currentValve b.currentValve
@@ -153,7 +167,7 @@ maxOrZero a [] = a
 maxOrZero _ (xs) = maximum xs
 
 tr :: Show a => String -> a -> a
-tr s a = a -- trace (s ++ show a) a
+tr s a = trace (s ++ show a) a
 
 
 asciiInt :: Valve -> Int
@@ -205,7 +219,7 @@ incrementPressure state = result where
 
 
 openValve :: Valve -> VolcanoState -> VolcanoState
-openValve v state = state { valveStates = openV v (state.valveStates), flowRate = state.flowRate + v.rate }
+openValve v state = if (isValveOpen v (state.valveStates)) then state else state { valveStates = openV v (state.valveStates), flowRate = state.flowRate + v.rate }
 
 secondToLast :: [a] -> a
 secondToLast = last . init
@@ -219,65 +233,23 @@ iterateVolcanoStateOnOperation state (Open v) = result where
 iterateVolcanoStateOnOperation state (Goto v) = result where
   result = incrementPressure $ state { currentValve = v }
 
+applyOp :: VolcanoState -> Bool -> Operation -> VolcanoState
+applyOp state isEle (Open v) = result where
+  result = openValve v $ state
+applyOp state isEle (Goto v) = result where
+  result = if isEle then (state { eleValve = v } :: VolcanoState) else (state { currentValve = v } :: VolcanoState)
 
-iterateVolcanoState :: Float -> VolcanoState -> (VolcanoState, Operation)
-iterateVolcanoState discount state = result where
-  pathToTake = pathToNextBestDestination discount state
-  result = if (head pathToTake == state.currentValve) then
-      ( openValve (state.currentValve) $ incrementPressure state, Open (state.currentValve))
-    else
-      (incrementPressure $ state { currentValve = secondToLast pathToTake }, Goto (secondToLast pathToTake))
+applyBothOps :: VolcanoState -> (Operation, Operation) -> VolcanoState
+applyBothOps state (hop, eop) = result where
+  postOp = applyOp (applyOp state False hop) True eop
+  result = incrementPressure postOp
 
-
---bestOperationsFix :: (VolcanoState -> [(Operation, VolcanoState)]) -> VolcanoState -> [(Operation, VolcanoState)]
---bestOperationsFix f state = bestResult where
---  possibleNextStates = getPossibleNextStates state
---  results = fmap (\op -> op : f (iterateVolcanoStateOnOperation state op)) possibleNextStates
---  bestResult = maximumBy (compare `on` (sum . fmap (releasedPressure . snd))) results
-
-bestOperationsState :: VolcanoState -> St.State (Map.Map VolcanoStateCacheKey [(Operation, VolcanoState)]) [(Operation, VolcanoState)]
-bestOperationsState (VolcanoState _ _ _ _ 10 _ _) = return $ (tr "bottom: " [])
-bestOperationsState state = do
-  resultMap <- St.get
-  let possibleNextOperations = if ((tr "tick: " $ state.time) >= 30) then [] else getPossibleNextOperations state
-  let remainder op = if Map.member (toCacheKey (iterateVolcanoStateOnOperation state op)) resultMap then
-        return $ (op, state):(resultMap Map.! (toCacheKey (iterateVolcanoStateOnOperation state op)))
-      else
-        fmap (\t -> (op, state):t) $ bestOperationsState (tr "itr: " $ (iterateVolcanoStateOnOperation state op))
-  results <- sequence $ fmap remainder possibleNextOperations
-  let bestResult = if null results then [] else maximumBy (compare `on` (\r -> ((.releasedPressure) . snd . last) r)) results
-  St.put $ Map.insert (toCacheKey state) bestResult resultMap
-  return $ tr "br: " bestResult
-
-bestOperationsStateSingle :: VolcanoState -> St.State (Map.Map VolcanoState VolcanoState) (Maybe VolcanoState)
-bestOperationsStateSingle state = do
-  resultMap <- St.get
-  let possibleNextOperations = if ((tr "tick :" $ state.time) >= 30) then [] else getPossibleNextOperations (tr "state: " state)
-  let remainder op = if Map.member (iterateVolcanoStateOnOperation state op) resultMap then
-        return $ Just (resultMap Map.! (iterateVolcanoStateOnOperation state op))
-      else
-        bestOperationsStateSingle (iterateVolcanoStateOnOperation state op)
-  results <- sequence $ fmap remainder possibleNextOperations
-  let realResults = filter isJust results
-  let bestResult = join $ if null realResults then Nothing else Just (maximumBy (compare `on` (fmap (.releasedPressure))) $ realResults)
-  St.put $ if isJust bestResult then Map.insert state (fromJust bestResult) resultMap else resultMap
-  return $ bestResult
-
---memoize :: (Ord a) => [a] -> (a -> b) -> (a -> b)
---memoize domain f = (map Map.! ) . memo where
---  map = Map.fromList $ fmap (\a -> (a, f a)) domain
---
---bestOperations :: VolcanoState -> [(Operation, VolcanoState)]
---bestOperations state = fix ((memoize domain) . bestOperationsFix) $ state where
---  domain = Map.keys (asMap $ state.map)
-
-getPossibleNextOperations :: VolcanoState -> [Operation]
-getPossibleNextOperations state = possibleNextStates where
-  currentValveIsOpen = isValveOpen (state.currentValve) state.valveStates
-  candidatePaths = topNNextMoves 1 state
-  currentValveNeighbors = vlook (state.map) (state.currentValve)
+getPossibleNextOperations :: VolcanoState -> Valve -> [Operation]
+getPossibleNextOperations state v = possibleNextStates where
+  currentValveIsOpen = isValveOpen v state.valveStates || v.rate == 0
+  currentValveNeighbors = vlook (state.map) v
   neighborStates = fmap Goto currentValveNeighbors
-  possibleNextStates = neighborStates ++ (if currentValveIsOpen then [] else [Open (state.currentValve)])
+  possibleNextStates = neighborStates ++ (if currentValveIsOpen then [] else [Open v])
 
 gotoValve :: Valve -> VolcanoState -> VolcanoState
 gotoValve v state =  incrementPressure $ state { currentValve = v, op = Goto v }
@@ -334,9 +306,6 @@ possiblePaths g time source pset path = result where
             if null neighbors then [path] else
             concat $ fmap (\(v, d) -> possiblePaths g (time - (d+1)) v (Set.insert v pset) ((v,d):path)) neighbors
 
-
-runNTimes :: Int -> (a -> a) -> a -> a
-runNTimes n f a = if n <= 0 then a else runNTimes (n-1) f (f a)
 
 evalPath :: Int -> VolcanoState -> [(Valve,Int)] -> VolcanoState
 evalPath t state [] = until (\s -> s.time >= t) incrementPressure state
@@ -404,6 +373,99 @@ pairedResults sample g nodePartitions volcanoState start = do
 tv :: String -> Valve
 tv s = Valve {name = ValveLabel s, rate = 0}
 
+
+rankFn :: VolcanoState -> ([Operation], VolcanoState) -> Int
+rankFn state (ops, s) = s.releasedPressure - state.releasedPressure
+
+
+findBestRoute :: (Applicative f) => VolcanoState -> Int -> (VolcanoState -> f ([Operation], VolcanoState)) -> VolcanoState -> f ([Operation], VolcanoState)
+findBestRoute initialState timeLimit recur state = result where
+  nextOps = getPossibleNextOperations state (state.currentValve)
+  nextStates = fmap (\op -> (op, iterateVolcanoStateOnOperation state op)) nextOps
+  subRoute (op,s) = (\r -> (op : fst r, snd r)) <$> recur s
+  possibleRoutes = traverse subRoute nextStates
+  makeTrue :: [([Operation], VolcanoState)] -> [([Operation], VolcanoState)]
+  makeTrue l = fmap (\(ops, s) -> (ops, foldl' iterateVolcanoStateOnOperation initialState ops)) l
+  trueStates = makeTrue <$> possibleRoutes
+  bestRoute = (head . reverse . (sortOn (rankFn state))) <$> trueStates
+  result = if state.time >= timeLimit then pure ([], state) else bestRoute
+
+findBestRouteMay :: (Applicative f) => VolcanoState -> Int -> (VolcanoState -> f (Maybe ([Operation], VolcanoState))) -> VolcanoState -> f (Maybe ([Operation], VolcanoState))
+findBestRouteMay initialState timeLimit recur state = result where
+  nextOps = getPossibleNextOperations state (state.currentValve)
+  nextStates = fmap (\op -> (op, iterateVolcanoStateOnOperation state op)) nextOps
+  subRoute (op,s) = fmap (\r -> (op : fst r, snd r)) <$> recur s
+  possibleRoutes = catMaybes <$> traverse subRoute nextStates
+  makeTrue :: [([Operation], VolcanoState)] -> [([Operation], VolcanoState)]
+  makeTrue l = fmap (\(ops, s) -> (ops, foldl' iterateVolcanoStateOnOperation initialState ops)) l
+  trueStates = makeTrue <$> possibleRoutes
+  bestRoute = (headMay . reverse . (sortOn (rankFn state))) <$> trueStates
+  result = if state.time >= timeLimit then (pure (Just ([], state))) else bestRoute
+
+
+rankFnB :: VolcanoState -> ([(Operation,Operation)], VolcanoState) -> Int
+rankFnB state (ops, s) = s.releasedPressure - state.releasedPressure
+
+--cutState :: Int -> VolcanoState -> Bool
+--cutState timeLimit state = result where
+--  overtime = state.time >= timeLimit
+
+foldlUntil :: (Show b) => (a -> b -> a) -> (a -> Bool) -> a -> [b] -> a
+foldlUntil f p a [] = a
+foldlUntil f p a (b:bs) = result where
+  next = f a b
+  result = if p a then a else foldlUntil f p next bs
+
+shouldCut :: VolcanoState -> Int -> VolcanoState -> ([(Operation, Operation)], VolcanoState) -> Bool
+shouldCut initState timeLimit state (ops, s) = shouldCutResult where
+  closedValvesOrderedByHighestRate = sortOn (\v -> -1 * v.rate) $ filter (\v -> v.rate > 0) $ filter (\v -> isValveOpen v state.valveStates == False) $ Map.keys $ asMap state.map
+  valvePairs = let parts = ipartition (\i a -> i `mod` 2 == 0) closedValvesOrderedByHighestRate in (zip (fst parts) (snd parts))
+  openBestValveEachTurnOpList = concatMap (\(v1, v2) -> [(Goto v1, Goto v2), (Open v1, Open v2)]) valvePairs
+  openBestValveEachTurnState = foldlUntil applyBothOps (\s -> s.time >= timeLimit) state openBestValveEachTurnOpList
+  remainingTimePassedState = runNTimes (timeLimit - openBestValveEachTurnState.time) incrementPressure openBestValveEachTurnState
+  shouldCutResult = s.releasedPressure > remainingTimePassedState.releasedPressure
+
+shouldCut2 :: VolcanoState -> Int -> VolcanoState -> ([(Operation, Operation)], VolcanoState) -> Bool
+shouldCut2 initState timeLimit state (ops, s) = shouldCutResult where
+  stateAtEquivalentTime = foldlUntil applyBothOps (\s -> s.time >= state.time) initState ops
+  shouldCutResult = state.releasedPressure < stateAtEquivalentTime.releasedPressure && state.flowRate < stateAtEquivalentTime.flowRate
+
+cutAll :: VolcanoState -> Int -> VolcanoState -> ([(Operation, Operation)], VolcanoState) -> Bool
+cutAll initState timeLimit state (ops, s) = answer where
+  one = shouldCut initState timeLimit state (ops, s)
+--  two = shouldCut2 initState timeLimit state (ops, s)
+  answer = one -- || two
+
+dontCut :: VolcanoState -> Int -> VolcanoState -> ([(Operation, Operation)], VolcanoState) -> Bool
+dontCut initState timeLimit state (ops, s) = False where
+
+shouldCutSingle :: Int -> VolcanoState -> (a, VolcanoState) -> Bool
+shouldCutSingle timeLimit state (ops, s) = shouldCut where
+  closedValvesOrderedByHighestRate = sortOn (\v -> -1 * v.rate) $ filter (\v -> v.rate > 0) $ filter (\v -> isValveOpen v state.valveStates == False) $ Map.keys $ asMap state.map
+  openBestValveEachTurnOpList = concatMap (\v -> [Goto v, Open v]) closedValvesOrderedByHighestRate
+  openBestValveEachTurnState = foldl' iterateVolcanoStateOnOperation state openBestValveEachTurnOpList
+  remainingTimePassedState = runNTimes (timeLimit - openBestValveEachTurnState.time) incrementPressure openBestValveEachTurnState
+  shouldCut = s.releasedPressure > remainingTimePassedState.releasedPressure
+
+isOpenOp :: Operation -> Bool
+isOpenOp (Open _) = True
+isOpenOp _ = False
+
+findBestRouteEle :: (Applicative f) => VolcanoState -> Int -> (VolcanoState -> f (Maybe ([(Operation, Operation)], VolcanoState))) -> VolcanoState -> f (Maybe ([(Operation, Operation)], VolcanoState))
+findBestRouteEle initialState timeLimit recur state = result where
+  humanOps = getPossibleNextOperations state (state.currentValve)
+  eleOpsAll = getPossibleNextOperations state (state.eleValve)
+  eleOps = filter (not . (\op -> isOpenOp op && op `elem` humanOps )) eleOpsAll
+  allOps = [(h,e) | h <- humanOps, e <- eleOps]
+  nextStates = fmap (\ops -> (ops, applyBothOps state ops)) allOps
+  subRoute (op,s) = fmap (\r -> (op : fst r, snd r)) <$> recur s
+  possibleRoutes = catMaybes <$> traverse subRoute nextStates
+  makeTrue :: [([(Operation, Operation)], VolcanoState)] -> [([(Operation, Operation)], VolcanoState)]
+  makeTrue l = fmap (\(ops, s) -> (ops, foldl' applyBothOps initialState ops)) l
+  trueStates = makeTrue <$> possibleRoutes
+  bestRoute = (headMay . reverse . (sortOn (rankFnB state))) <$> trueStates
+  result = if state.time >= timeLimit then pure $ Just ([], state) else bestRoute
+
 main :: IO ()
 main = do
   s <- resource "volcano-valve"
@@ -418,57 +480,19 @@ main = do
   let valves = Map.keys (asMap neighbors)
   let flowValves = filter (\v -> v.rate > 0) valves
   let start = (Valve (ValveLabel "AA") 0)
---  print neighbors
---  let fw = floydWarshall $ asMap neighbors
---  print fw
---  print $ computePathFW fw ((Valve (ValveLabel "AA") 0), (Valve (ValveLabel "GG") 0))
 --
-  let volcanoState = VolcanoState neighbors (toValveState initialValveStates) (Valve (ValveLabel "AA") 0) 0 0 (Goto  (Valve (ValveLabel "AA") 0)) 0
---  let results d = getArtifactsUntil (iterateVolcanoState d) (\s -> s.time > 30) volcanoState
---  let bestResult = head $ reverse $ sortOn ((.releasedPressure) . fst . last) $ fmap results [1.0]
---  mapM_ print $ fmap (\s -> (snd s, (fst s).time, (fst s).releasedPressure)) $ bestResult
-
---  let result = St.runState (bestOperationsState volcanoState) Map.empty
---  mapM_ print $ fmap (\(o,s) -> (o, s.releasedPressure, s.time)) $ fst $ result
---  print $ length $ fst result
+  let volcanoState = VolcanoState neighbors (toValveState initialValveStates) (Valve (ValveLabel "AA") 0) (Valve (ValveLabel "AA") 0) 0 0 (Goto  (Valve (ValveLabel "AA") 0)) 0
 
   print "Starting..."
   t1 <- liftIO getCPUTime
-  let g = (reduceGraphBFS start $ asMap neighbors)
+  let findBestHuamnRouteMemo = memoize (findBestRoute volcanoState 20)
+  let findBestRouteMemo = memoize (findBestRouteEle volcanoState 25)
+  let findBestRouteBB = memoizeBB (compare `on` snd) (shouldCutSingle 30) (findBestRouteMay volcanoState 30)
+  let findBestRouteBBEle = memoizeBB (compare `on` snd) (cutAll volcanoState 25) (findBestRouteEle volcanoState 25)
 
-
-  let nodePartitions = allPossiblePartitions 3 $ Map.keys g
-  print $ length nodePartitions
-  let knownBestPartition = (
-                            [tv "DA", tv "EA", tv "FA", tv "GA", tv "HA", tv "IA", tv "JA", tv "CA"],
-                            [tv "KA", tv "LA", tv "MA", tv "NA", tv "OA", tv "PA"]
-                           )
-
---  let epp = fmap (\(p,s) -> ((p,s), head $ reverse $ sortOn ((.releasedPressure) . snd) (take 1000 (rankedEvaledPaths g 26 volcanoState start (start: (fmap fst p)))))) pp
-
-  let pr = pairedResults 100 g nodePartitions volcanoState start
-
-
-  let best = head $ reverse $ sortOn pressureSum pr
-
-  let humanPath = fst (fst best)
-  let humanState = snd (fst best)
-
-  let elePath = fst (snd best)
-  let eleState = snd (snd best)
---  mapM_ print $ scanl evalPathStep volcanoState humanPath
-
-  mapM_ print $ humanPath
-  print $ humanState.releasedPressure
-  print $ humanState.time
-
---  mapM_ print $ scanl evalPathStep volcanoState elePath
-
-  mapM_ print $ elePath
-  print $ eleState.releasedPressure
-  print $ eleState.time
-
-  print $ eleState.releasedPressure + humanState.releasedPressure
+  let result = fromJust $ findBestRouteBBEle volcanoState
+  mapM_ print $ fst result
+  print $ (snd result).releasedPressure
   t2 <- liftIO getCPUTime
   print $ (fromIntegral (t2 - t1)) / (10 ^ 12)
 
@@ -504,3 +528,4 @@ main = do
  -- 2122 was too low
  -- 2280 was too low
 
+-- cuts 460748

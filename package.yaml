@@ -33,6 +33,10 @@ dependencies:
 - random
 - parallel
 - deepseq
+- unordered-containers
+- hashable
+- text
+- MemoTrie
 
 data-files:
   - resources/*

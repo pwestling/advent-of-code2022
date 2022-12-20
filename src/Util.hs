@@ -9,6 +9,7 @@ import Text.Parsec.String
 import Text.ParserCombinators.Parsec.Char
 import Control.Monad
 import Data.Maybe
+import Data.Hashable
 
 resource :: String -> IO String
 resource name = do
@@ -23,6 +24,9 @@ parseNumber :: Parser Int
 parseNumber = read <$> ((maybeToList <$> optionMaybe (char '-')) <> many1 digit)
 
 data Point = Point Int Int deriving (Show, Eq, Ord)
+
+instance Hashable Point where
+    hashWithSalt salt (Point x y) = hashWithSalt salt (x, y)
 
 getX :: Point -> Int
 getX (Point x _) = x
@@ -58,3 +62,9 @@ grabLeft (Right _) = error "fromLeft: Right"
 grabRight :: Either a b -> b
 grabRight (Right x) = x
 grabRight (Left _) = error "fromRight: Left"
+
+runNTimes :: Int -> (a -> a) -> a -> a
+runNTimes n f a = if n <= 0 then a else runNTimes (n-1) f (f a)
+
+trd :: (a, b, c) -> c
+trd (_, _, x) = x
