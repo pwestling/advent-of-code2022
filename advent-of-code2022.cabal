@@ -38,7 +38,11 @@ data-files:
     resources/mix-enc-example-2
     resources/monkey-items
     resources/monkey-items-example
+    resources/monkey-yell
+    resources/monkey-yell-example
     resources/nums
+    resources/password-maze
+    resources/password-maze-example
     resources/rope-instructions
     resources/rps-game
     resources/sensor-beacon
@@ -73,6 +77,8 @@ library
       Advent19
       Advent2
       Advent20
+      Advent21
+      Advent22
       Advent3
       Advent4
       Advent5

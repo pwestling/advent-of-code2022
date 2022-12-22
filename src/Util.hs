@@ -25,6 +25,9 @@ parseNumber = read <$> ((maybeToList <$> optionMaybe (char '-')) <> many1 digit)
 
 data Point = Point Int Int deriving (Show, Eq, Ord)
 
+pmap :: (Int -> Int) -> Point -> Point
+pmap f (Point x y) = Point (f x) (f y)
+
 instance Hashable Point where
     hashWithSalt salt (Point x y) = hashWithSalt salt (x, y)
 
