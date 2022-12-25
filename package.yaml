@@ -37,7 +37,6 @@ dependencies:
 - hashable
 - text
 - MemoTrie
-- vector
 
 data-files:
   - resources/*

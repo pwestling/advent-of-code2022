@@ -19,12 +19,17 @@ extra-source-files:
     README.md
     CHANGELOG.md
 data-files:
+    resources/blizzard
+    resources/blizzard-example
+    resources/blizzard-example-2
     resources/cleaning-sections
     resources/compartments
     resources/cycle-cmds
     resources/cycle-cmds-example
     resources/elephant-tetris
     resources/elephant-tetris-example
+    resources/elf-grid
+    resources/elf-grid-example
     resources/falling-sand
     resources/falling-sand-example
     resources/geode-bot
@@ -49,6 +54,8 @@ data-files:
     resources/sensor-beacon-example
     resources/signal-order
     resources/signal-order-example
+    resources/snafu
+    resources/snafu-example
     resources/stacked-crates
     resources/terminal-session
     resources/terminal-session-test
@@ -79,6 +86,9 @@ library
       Advent20
       Advent21
       Advent22
+      Advent23
+      Advent24
+      Advent25
       Advent3
       Advent4
       Advent5
@@ -89,6 +99,7 @@ library
       BTreeList
       Graph
       Memo
+      Search
       Util
   other-modules:
       Paths_advent_of_code2022
@@ -113,7 +124,6 @@ library
     , split
     , text
     , unordered-containers
-    , vector
   default-language: Haskell2010
 
 executable advent-of-code2022-exe
@@ -142,7 +152,6 @@ executable advent-of-code2022-exe
     , split
     , text
     , unordered-containers
-    , vector
   default-language: Haskell2010
 
 test-suite advent-of-code2022-test
@@ -172,5 +181,4 @@ test-suite advent-of-code2022-test
     , split
     , text
     , unordered-containers
-    , vector
   default-language: Haskell2010

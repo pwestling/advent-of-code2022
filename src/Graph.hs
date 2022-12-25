@@ -7,21 +7,42 @@ module Graph where
 import Control.Monad.State
 import Debug.Trace
 import qualified Data.Map as Map
+import Data.List
 
 data BFSState a = BFSState {
-    queue :: [a],
+    queue :: Queue a,
     parents :: Map.Map a a
 } deriving (Show)
 
-pop :: [a] -> (a, [a])
-pop [] = error "Empty list"
-pop (x:xs) = (x, xs)
+data Queue a = Queue {
+    enqueue :: [a],
+    dequeue :: [a]
+} deriving (Show)
 
+invert :: Queue a -> Queue a
+invert (Queue enq deq) = Queue [] (deq ++ reverse enq)
+
+pop :: Queue a -> (a, Queue a)
+pop q = result where
+  fullQueue = if length q.dequeue < length q.enqueue then invert q else q
+  result = (head fullQueue.dequeue, fullQueue{dequeue = tail fullQueue.dequeue})
+
+push :: a -> Queue a -> Queue a
+push x q = q{enqueue = x:q.enqueue}
+
+pushAll :: [a] -> Queue a -> Queue a
+pushAll xs q = q{enqueue = xs ++ q.enqueue}
+
+mkQueue :: [a] -> Queue a
+mkQueue xs = Queue [] xs
+
+isEmpty :: Queue a -> Bool
+isEmpty q = null q.enqueue && null q.dequeue
 
 bfs :: (Show state, Ord state) => (state -> [state]) -> (state -> Bool) -> state -> Maybe [state]
 bfs next isGoal start = result where
     initialState = BFSState {
-        queue = [start],
+        queue = mkQueue [start],
         parents = Map.singleton start start
     }
     result = fst $ runState (bfsS next isGoal) initialState
@@ -29,7 +50,7 @@ bfs next isGoal start = result where
 bfsFull :: (Show state, Ord state) => (state -> [state]) -> state -> Map.Map state state
 bfsFull next start = result where
     initialState = BFSState {
-        queue = [start],
+        queue = mkQueue [start],
         parents = Map.singleton start start
     }
     result = fst $ runState (bfsSFull next (const False)) initialState
@@ -45,15 +66,15 @@ computePath parents end = result where
 bfsS :: (Show state, Ord state) => (state -> [state]) -> (state -> Bool) -> State (BFSState state) (Maybe [state])
 bfsS mkCandidates isEnd = do
     BFSState queue parents <- get
-    let (current, queue') = pop queue
+    let (current, queue') = pop (queue)
     let candidates = mkCandidates (current)
     let validCandidates = filter (`Map.notMember` parents) candidates
-    let newQueue = queue' ++ validCandidates
+    let newQueue = pushAll validCandidates queue'
     let newParents = foldl (\parents candidate -> Map.insert candidate current parents) parents validCandidates
     put $ BFSState newQueue newParents
-    if isEnd current
+    if (isEnd current)
         then return $ Just (computePath parents current)
-        else if (null newQueue)
+        else if (isEmpty newQueue)
             then return Nothing
             else bfsS mkCandidates isEnd
 
@@ -63,12 +84,12 @@ bfsSFull mkCandidates isEnd = do
     let (current, queue') = pop queue
     let candidates = mkCandidates (current)
     let validCandidates = filter (`Map.notMember` parents) candidates
-    let newQueue = queue' ++ validCandidates
+    let newQueue = pushAll validCandidates queue'
     let newParents = foldl (\parents candidate -> Map.insert candidate current parents) parents validCandidates
     put $ BFSState newQueue newParents
     if isEnd current
         then return $ parents
-        else if (null newQueue)
+        else if (isEmpty newQueue)
             then return $ parents
             else bfsSFull mkCandidates isEnd
 
@@ -139,3 +160,32 @@ computePathFW s (i,j) = result where
     vMap = s.vertexMap
     next = vMap ! (i,j)
     result = if next == j then [j] else j : computePathFW s (i,next)
+
+
+data BeamState a = BeamState {
+    queue :: [a],
+    parents :: Map.Map a a
+} deriving (Show)
+
+beam :: (Show state, Ord state) => Int -> (state -> state -> Ordering) -> (state -> [state]) -> (state -> Bool) -> state -> Maybe [state]
+beam sample comp next isGoal start = result where
+    initialState = BeamState {
+        queue = [start],
+        parents = Map.singleton start start
+    }
+    result = fst $ runState (beamS sample comp next isGoal) initialState
+
+beamS :: (Show state, Ord state) => Int -> (state -> state -> Ordering) -> (state -> [state]) -> (state -> Bool) -> State (BeamState state) (Maybe [state])
+beamS sample comp mkCandidates isEnd = do
+    BeamState queue parents <- get
+    let (current, queue') = (head queue, tail queue)
+    let candidates = mkCandidates (current)
+    let validCandidates = filter (`Map.notMember` parents) candidates
+    let newQueue = take sample $ sortBy comp $ queue' ++ validCandidates
+    let newParents = foldl (\parents candidate -> Map.insert candidate current parents) parents validCandidates
+    put $ BeamState newQueue newParents
+    if (isEnd current)
+        then return $ Just (computePath parents current)
+        else if (null newQueue)
+            then return Nothing
+            else beamS sample comp mkCandidates isEnd

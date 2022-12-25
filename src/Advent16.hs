@@ -227,6 +227,8 @@ secondToLast = last . init
 
 data Operation = Open Valve | Goto Valve deriving (Show, Eq, Ord,Generic, NFData)
 
+instance Hashable Operation
+
 iterateVolcanoStateOnOperation :: VolcanoState -> Operation -> VolcanoState
 iterateVolcanoStateOnOperation state (Open v) = result where
   result = openValve v $ incrementPressure state
@@ -430,8 +432,13 @@ shouldCut2 initState timeLimit state (ops, s) = shouldCutResult where
   stateAtEquivalentTime = foldlUntil applyBothOps (\s -> s.time >= state.time) initState ops
   shouldCutResult = state.releasedPressure < stateAtEquivalentTime.releasedPressure && state.flowRate < stateAtEquivalentTime.flowRate
 
-cutAll :: VolcanoState -> Int -> VolcanoState -> ([(Operation, Operation)], VolcanoState) -> Bool
-cutAll initState timeLimit state (ops, s) = answer where
+--cutBackTrack :: VolcanoState -> Int -> ([(Operation, Operation)], VolcanoState) -> ([(Operation, Operation)], VolcanoState) -> Bool
+--cutBackTrack initState timeLimit (curOps, state) (ops, s) = humanBacktracked || eleBackTracked where
+--  humanBacktracked = fmap fst curOps
+--  eleBackTracked = shouldCut2 initState timeLimit state (ops, s)
+
+cutAll :: VolcanoState -> Int -> ([(Operation, Operation)], VolcanoState) -> ([(Operation, Operation)], VolcanoState) -> Bool
+cutAll initState timeLimit (curOps, state) (ops, s) = answer where
   one = shouldCut initState timeLimit state (ops, s)
 --  two = shouldCut2 initState timeLimit state (ops, s)
   answer = one -- || two
@@ -451,20 +458,20 @@ isOpenOp :: Operation -> Bool
 isOpenOp (Open _) = True
 isOpenOp _ = False
 
-findBestRouteEle :: (Applicative f) => VolcanoState -> Int -> (VolcanoState -> f (Maybe ([(Operation, Operation)], VolcanoState))) -> VolcanoState -> f (Maybe ([(Operation, Operation)], VolcanoState))
-findBestRouteEle initialState timeLimit recur state = result where
+findBestRouteEle :: (Applicative f) => VolcanoState -> Int -> (([(Operation, Operation)], VolcanoState) -> f (Maybe ([(Operation, Operation)], VolcanoState))) -> ([(Operation, Operation)], VolcanoState) -> f (Maybe ([(Operation, Operation)], VolcanoState))
+findBestRouteEle initialState timeLimit recur (pastOps, state) = result where
   humanOps = getPossibleNextOperations state (state.currentValve)
   eleOpsAll = getPossibleNextOperations state (state.eleValve)
   eleOps = filter (not . (\op -> isOpenOp op && op `elem` humanOps )) eleOpsAll
   allOps = [(h,e) | h <- humanOps, e <- eleOps]
   nextStates = fmap (\ops -> (ops, applyBothOps state ops)) allOps
-  subRoute (op,s) = fmap (\r -> (op : fst r, snd r)) <$> recur s
+  subRoute (op,s) = recur ((op:pastOps),s)
   possibleRoutes = catMaybes <$> traverse subRoute nextStates
   makeTrue :: [([(Operation, Operation)], VolcanoState)] -> [([(Operation, Operation)], VolcanoState)]
   makeTrue l = fmap (\(ops, s) -> (ops, foldl' applyBothOps initialState ops)) l
   trueStates = makeTrue <$> possibleRoutes
   bestRoute = (headMay . reverse . (sortOn (rankFnB state))) <$> trueStates
-  result = if state.time >= timeLimit then pure $ Just ([], state) else bestRoute
+  result = if state.time >= timeLimit then pure $ Just (pastOps, state) else bestRoute
 
 main :: IO ()
 main = do
@@ -490,7 +497,7 @@ main = do
   let findBestRouteBB = memoizeBB (compare `on` snd) (shouldCutSingle 30) (findBestRouteMay volcanoState 30)
   let findBestRouteBBEle = memoizeBB (compare `on` snd) (cutAll volcanoState 25) (findBestRouteEle volcanoState 25)
 
-  let result = fromJust $ findBestRouteBBEle volcanoState
+  let result = fromJust $ findBestRouteBBEle ([], volcanoState)
   mapM_ print $ fst result
   print $ (snd result).releasedPressure
   t2 <- liftIO getCPUTime
